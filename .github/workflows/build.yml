@@ -1,0 +1,49 @@
+name: Build Mum Florence APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.9
+
+      - name: Assemble the project folders
+        run: |
+          DIR=$(dirname "$(find . -name assemble.sh -not -path './build_project/*' | head -1)")
+          cd "$DIR"
+          bash assemble.sh
+          echo "PROJ=$(pwd)/build_project" >> "$GITHUB_ENV"
+
+      - name: Download voice models into assets
+        run: |
+          A="$PROJ/app/src/main/assets"
+          mkdir -p "$A"
+          cd "$RUNNER_TEMP"
+          curl -fL --retry 3 -o model.zip https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
+          unzip -q model.zip
+          mv vosk-model-small-en-us-0.15 "$A/model"
+          curl -fL --retry 3 -o spk.zip https://alphacephei.com/vosk/models/vosk-model-spk-0.4.zip
+          unzip -q spk.zip
+          mv vosk-model-spk-0.4 "$A/spk"
+
+      - name: Build the APK
+        working-directory: ${{ env.PROJ }}
+        run: gradle assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MumFlorence-APK
+          path: ${{ env.PROJ }}/app/build/outputs/apk/debug/*.apk
